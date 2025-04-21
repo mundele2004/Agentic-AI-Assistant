@@ -1,0 +1,64 @@
+# ===========================
+# Core LangChain & LangGraph
+# ===========================
+langchain
+langchain-core
+langgraph
+langgraph-checkpoint
+langgraph-checkpoint-sqlite
+langsmith
+
+# ===========================
+# Google Gemini
+# ===========================
+langchain-google-genai
+google-generativeai
+
+# ===========================
+# MCP
+# ===========================
+mcp
+langchain-mcp-adapters
+
+# ===========================
+# RAG
+# ===========================
+langchain-community
+faiss-cpu
+pypdf
+sentence-transformers
+
+# ===========================
+# Search Tools
+# ===========================
+tavily-python
+duckduckgo-search
+
+# ===========================
+# Database
+# ===========================
+sqlalchemy
+aiosqlite
+
+# ===========================
+# API / Backend
+# ===========================
+fastapi
+uvicorn
+httpx
+
+# ===========================
+# UI
+# ===========================
+streamlit
+
+# ===========================
+# Environment Variables
+# ===========================
+python-dotenv
+
+# ===========================
+# Utilities
+# ===========================
+rich
+colorama
