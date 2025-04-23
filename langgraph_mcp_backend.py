@@ -14,11 +14,13 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from rag.rag_tool import create_rag_tool
+
+from langgraph.types import interrupt,Command
 
 load_dotenv()
 
@@ -138,6 +140,40 @@ def load_mcp_tools() -> list[BaseTool]:
 mcp_tools = load_mcp_tools()
 
 # ======================================================
+# State
+# ======================================================
+
+class ChatState(TypedDict):
+    messages: Annotated[
+        list[BaseMessage],
+        add_messages
+    ]
+    approved: bool
+
+SENSITIVE_TOOLS = {
+    "update_expense",
+    "delete_expense",
+}
+
+
+def route_tools(state: ChatState):
+
+    last_message = state["messages"][-1]
+
+    # No tool calls → END
+    if not last_message.tool_calls:
+        return END
+
+    # Check every requested tool
+    for tool_call in last_message.tool_calls:
+
+        if tool_call["name"] in SENSITIVE_TOOLS:
+            return "approval"
+
+    # Safe tools
+    return "tools"
+
+# ======================================================
 # SQLite Checkpointer
 # ======================================================
 
@@ -151,15 +187,7 @@ async def create_checkpointer():
 checkpointer = run_async(
     create_checkpointer()
 )
-# ======================================================
-# State
-# ======================================================
 
-class ChatState(TypedDict):
-    messages: Annotated[
-        list[BaseMessage],
-        add_messages
-    ]
 # ======================================================
 # Chatbot Factory
 # ======================================================
@@ -193,6 +221,34 @@ def create_chatbot(retriever=None):
             "messages": [response]
         }
 
+    async def approval_node(state: ChatState):
+
+        last_message = state["messages"][-1]
+        tool_call = last_message.tool_calls[0]
+
+        approval = interrupt(
+            {
+                "tool": tool_call["name"],
+                "args": tool_call["args"],
+                "message": f"Approve execution of '{tool_call['name']}'?"
+            }
+        )
+
+        print("Approval:", approval)
+
+        return {
+            "approved": approval
+        }
+
+    def route_after_approval(state: ChatState):
+
+        if state["approved"]:
+            return "tools"
+
+        return END
+
+    #Build the graph:
+    
     graph = StateGraph(ChatState)
 
     graph.add_node(
@@ -205,6 +261,11 @@ def create_chatbot(retriever=None):
         tool_node
     )
 
+    graph.add_node(
+    "approval",
+    approval_node
+)
+
     graph.add_edge(
         START,
         "chat_node"
@@ -212,7 +273,21 @@ def create_chatbot(retriever=None):
 
     graph.add_conditional_edges(
         "chat_node",
-        tools_condition
+        route_tools,
+        {
+            "tools": "tools",
+            "approval": "approval",
+            END: END,
+        },
+    )
+    
+    graph.add_conditional_edges(
+        "approval",
+        route_after_approval,
+        {
+            "tools": "tools",
+            END: END,
+        },
     )
 
     graph.add_edge(
@@ -250,3 +325,4 @@ def retrieve_all_threads():
     return run_async(
         _alist_threads()
     )
+
