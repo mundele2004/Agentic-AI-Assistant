@@ -359,7 +359,7 @@ async def stream_graph(
             ]
         },
         config=config,
-        stream_mode="updates",
+        stream_mode=["updates", "messages"],
     ):
         yield event
 
@@ -398,7 +398,7 @@ async def resume_stream(
     async for event in active_chatbot.astream(
         Command(resume=approved),
         config=config,
-        stream_mode="updates",
+        stream_mode=["updates", "messages"],
     ):
         yield event
 
@@ -425,6 +425,83 @@ def resume_stream_sync(
         except StopAsyncIteration:
             break
 
+def extract_chunk_text(chunk):   #helper 
+    """
+    Extract text from an AIMessageChunk.
+    """
+
+    text = ""
+
+    content = chunk.content
+
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+
+        for block in content:
+
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "text"
+            ):
+                text_piece= block.get("text", "")
+                if text_piece:
+                    text += text_piece
+
+    return text
+
+
+def process_stream_events(
+    event_iterator,
+    placeholder,
+):
+    """
+    Process LangGraph stream events.
+
+    Returns:
+        assistant_response
+    """
+
+    assistant_response = ""
+
+    for mode, data in event_iterator:
+
+        # ---------------- Token Streaming ---------------- #
+
+        if mode == "messages":
+
+            chunk, metadata = data
+
+            # Ignore ToolMessage output from the tools node
+            if isinstance(chunk, ToolMessage):
+                continue
+
+            text = extract_chunk_text(chunk)
+
+            if text:
+                assistant_response += text
+                placeholder.markdown(assistant_response)
+
+            continue
+
+        # ---------------- Graph Updates ---------------- #
+
+        if mode == "updates":
+
+            # Handle interrupt
+            if "__interrupt__" in data:
+
+                st.session_state.pending_interrupt = (
+                    data["__interrupt__"][0]
+                )
+
+                st.session_state.waiting_for_approval = True
+
+                st.rerun()
+
+    return assistant_response
+
 
 def resume_graph(approved: bool):
 
@@ -436,60 +513,19 @@ def resume_graph(approved: bool):
         }
     }
 
-    assistant_response = ""
+    # Stream the assistant response inside a chat bubble
+    with st.chat_message("assistant"):
 
-    for event in resume_stream_sync(
-        active_chatbot,
-        config,
-        approved,
-    ):
+        placeholder = st.empty()
 
-        print(event)
-
-        # Tool execution event (optional for debugging)
-        # if "tools" in event:
-
-        #     messages = event["tools"].get("messages", [])
-
-        #     if messages:
-        #         print(messages[-1])
-
-        # Assistant response event
-        if "chat_node" not in event:
-            continue
-
-        messages = event["chat_node"].get("messages", [])
-
-        if not messages:
-            continue
-
-        last_message = messages[-1]
-
-        if isinstance(last_message, AIMessage):
-
-            content = last_message.content
-
-            if isinstance(content, str):
-
-                assistant_response = content
-
-            elif isinstance(content, list):
-
-                text = ""
-
-                for block in content:
-
-                    if (
-                        isinstance(block, dict)
-                        and block.get("type") == "text"
-                    ):
-                        text += block.get("text", "")
-
-                assistant_response = text
-
-            else:
-
-                assistant_response = str(content)
+        assistant_response = process_stream_events(
+            resume_stream_sync(
+                active_chatbot,
+                config,
+                approved,
+            ),
+            placeholder,
+        )
 
     # Save assistant response to chat history
     if assistant_response:
@@ -507,6 +543,7 @@ def resume_graph(approved: bool):
     st.session_state.approval_decision = None
 
     st.rerun()
+
 # ======================================================
 # User Input
 # ======================================================
@@ -551,63 +588,76 @@ def handle_user_prompt():
         }
     }
     with st.chat_message("assistant"):
+
         placeholder = st.empty()
-        for event in stream_graph_sync(
-            prompt,
-            active_chatbot,
-            config,
-        ):
 
-            print(event)
+        assistant_response = process_stream_events(
+            stream_graph_sync(
+                prompt,
+                active_chatbot,
+                config,
+            ),
+            placeholder,
+        )
+    # with st.chat_message("assistant"):
+    #     placeholder = st.empty()
+    #     for event in stream_graph_sync(
+    #         prompt,
+    #         active_chatbot,
+    #         config,
+    #     ):
+    #         print("=" * 80)   #temporary
+    #         print(type(event)) #temporary
+    #         print(event)
 
-            # We'll implement interrupt handling next
-            if "__interrupt__" in event:
-                st.session_state.pending_interrupt = (
-                    event["__interrupt__"][0]
-                )
+    #         # We'll implement interrupt handling next
+    #         if "__interrupt__" in event:
+    #             st.session_state.pending_interrupt = (
+    #                 event["__interrupt__"][0]
+    #             )
 
-                st.session_state.waiting_for_approval = True
+    #             st.session_state.waiting_for_approval = True
 
-                st.rerun()
+    #             st.rerun()
     
 
-            if "chat_node" not in event:
-                continue
+    #         if "chat_node" not in event:
+    #             continue
 
-            messages = event["chat_node"].get("messages", [])
+    #         messages = event["chat_node"].get("messages", [])
 
-            if not messages:
-                continue
+    #         if not messages:
+    #             continue
 
-            last_message = messages[-1]
+    #         last_message = messages[-1]
 
-            if isinstance(last_message, AIMessage):
+    #         if isinstance(last_message, AIMessage):
 
-                content = last_message.content
+    #             content = last_message.content
 
-                if isinstance(content, str):
+    #             if isinstance(content, str):
 
-                    assistant_response = content
+    #                 assistant_response = content
 
-                elif isinstance(content, list):
+    #             elif isinstance(content, list):
 
-                    text = ""
+    #                 text = ""
 
-                    for block in content:
+    #                 for block in content:
 
-                        if (
-                            isinstance(block, dict)
-                            and block.get("type") == "text"
-                        ):
-                            text += block.get("text", "")
+    #                     if (
+    #                         isinstance(block, dict)
+    #                         and block.get("type") == "text"
+    #                     ):
+    #                         text += block.get("text", "")
 
-                    assistant_response = text
+    #                 assistant_response = text
 
-                else:
+    #             else:
 
-                    assistant_response = str(content)
+    #                 assistant_response = str(content)
 
-                placeholder.markdown(assistant_response)
+    #             placeholder.markdown(assistant_response)
 
     # ---------------- Save Assistant ---------------- #
 
