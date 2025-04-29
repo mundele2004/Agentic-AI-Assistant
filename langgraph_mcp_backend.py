@@ -5,6 +5,7 @@ import asyncio
 import threading
 import requests
 import aiosqlite
+import os
 from dotenv import load_dotenv
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -110,16 +111,6 @@ SERVERS = {
     "expense": {
         "transport": "streamable_http",
         "url": "https://expense-tracker-mcp-production.up.railway.app/mcp",
-    },
-    "manim": {
-        "transport": "stdio",
-        "command": r"C:\Users\Asus\anaconda3\python.exe",
-        "args": [
-            r"C:\Users\Asus\Desktop\manim-mcp-server\src\manim_server.py"
-        ],
-        "env": {
-            "MANIM_EXECUTABLE": r"C:\Users\Asus\anaconda3\Scripts\manim.exe"
-        }
     }
 }
 
@@ -234,7 +225,6 @@ def create_chatbot(retriever=None):
             }
         )
 
-        print("Approval:", approval)
 
         return {
             "approved": approval

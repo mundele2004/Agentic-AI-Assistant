@@ -22,6 +22,13 @@ from rag.embeddings import get_embeddings
 from rag.vector_store import create_vector_store
 from rag.retriever import get_retriever
 
+from database_backend import (
+    initialize_database,
+    save_chat_title,
+    load_all_titles,
+    delete_chat_title,
+)
+
 st.set_page_config(
     page_title="LangGraph Chatbot",
     page_icon="🤖",
@@ -51,6 +58,31 @@ def chat_reset():
     st.session_state.messages = []
 
     add_thread(thread_id)
+
+def delete_chat(thread_id: str):
+    """
+    Delete a chat from the UI and database.
+    """
+
+    # Remove from SQLite
+    delete_chat_title(thread_id)
+
+    # Remove from session titles
+    st.session_state.chat_titles.pop(thread_id, None)
+
+    # Remove from sidebar thread list
+    if thread_id in st.session_state.chat_threads:
+        st.session_state.chat_threads.remove(thread_id)
+
+    # If deleting the currently open chat,
+    # create a fresh empty chat.
+    if thread_id == st.session_state.thread_id:
+
+        st.session_state.thread_id = generate_thread_id()
+        st.session_state.messages = []
+
+        add_thread(st.session_state.thread_id)
+
 
 def generate_chat_title(message: str, max_length: int = 30):
     """
@@ -100,7 +132,8 @@ def initialize_session_state():
         st.session_state.approval_decision = None
 
     if "chat_titles" not in st.session_state:
-        st.session_state.chat_titles = {}
+        st.session_state.chat_titles = load_all_titles()
+
 
 
 # ======================================================
@@ -235,20 +268,27 @@ def render_sidebar():
             thread_id,
             "💬 New Chat"
         )
-        if st.sidebar.button(
-            title,
-            key=thread_id,
-            use_container_width=True,
-        ):
 
-            st.session_state.thread_id = thread_id
+        col1, col2 = st.sidebar.columns([5, 1])
 
-            st.session_state.messages = load_conversation(
-                thread_id
-            )
+        with col1:
+            if st.button(
+                title,
+                key=f"chat_{thread_id}",
+                use_container_width=True,
+            ):
+                st.session_state.thread_id = thread_id
+                st.session_state.messages = load_conversation(thread_id)
+                st.rerun()
 
-            st.rerun()
-
+        with col2:
+            if st.button(
+                "🗑️",
+                key=f"delete_{thread_id}",
+                use_container_width=True,
+            ):
+                delete_chat(thread_id)
+                st.rerun()
 
 # ======================================================
 # Chat History
@@ -565,12 +605,23 @@ def handle_user_prompt():
     )
 
     # ---------------- Generate Chat Title ---------------- #
-
     if st.session_state.thread_id not in st.session_state.chat_titles:
+
+        title = generate_chat_title(prompt)
 
         st.session_state.chat_titles[
             st.session_state.thread_id
-        ] = generate_chat_title(prompt)
+        ] = title
+
+        save_chat_title(
+            st.session_state.thread_id,
+            title,
+        )
+    # if st.session_state.thread_id not in st.session_state.chat_titles:
+
+    #     st.session_state.chat_titles[
+    #         st.session_state.thread_id
+    #     ] = generate_chat_title(prompt)
 
     # ---------------- Display User Message ---------------- #
 
@@ -599,65 +650,7 @@ def handle_user_prompt():
             ),
             placeholder,
         )
-    # with st.chat_message("assistant"):
-    #     placeholder = st.empty()
-    #     for event in stream_graph_sync(
-    #         prompt,
-    #         active_chatbot,
-    #         config,
-    #     ):
-    #         print("=" * 80)   #temporary
-    #         print(type(event)) #temporary
-    #         print(event)
-
-    #         # We'll implement interrupt handling next
-    #         if "__interrupt__" in event:
-    #             st.session_state.pending_interrupt = (
-    #                 event["__interrupt__"][0]
-    #             )
-
-    #             st.session_state.waiting_for_approval = True
-
-    #             st.rerun()
     
-
-    #         if "chat_node" not in event:
-    #             continue
-
-    #         messages = event["chat_node"].get("messages", [])
-
-    #         if not messages:
-    #             continue
-
-    #         last_message = messages[-1]
-
-    #         if isinstance(last_message, AIMessage):
-
-    #             content = last_message.content
-
-    #             if isinstance(content, str):
-
-    #                 assistant_response = content
-
-    #             elif isinstance(content, list):
-
-    #                 text = ""
-
-    #                 for block in content:
-
-    #                     if (
-    #                         isinstance(block, dict)
-    #                         and block.get("type") == "text"
-    #                     ):
-    #                         text += block.get("text", "")
-
-    #                 assistant_response = text
-
-    #             else:
-
-    #                 assistant_response = str(content)
-
-    #             placeholder.markdown(assistant_response)
 
     # ---------------- Save Assistant ---------------- #
 
@@ -674,6 +667,8 @@ def handle_user_prompt():
 
 def main():
 
+    initialize_database()
+
     initialize_session_state()
 
     render_sidebar()
@@ -683,7 +678,6 @@ def main():
     render_pending_approval()
 
     handle_user_prompt()
-
 
 if __name__ == "__main__":
     main()
