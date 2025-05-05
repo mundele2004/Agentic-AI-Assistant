@@ -128,8 +128,8 @@ def load_mcp_tools() -> list[BaseTool]:
         return []
 
 
-#mcp_tools = load_mcp_tools()
-mcp_tools=[]
+mcp_tools = load_mcp_tools()
+#mcp_tools=[]
 
 # ======================================================
 # State
