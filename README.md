@@ -122,7 +122,7 @@ Agentic-AI-Assistant/
 ## Clone Repository
 
 ```bash
-git clone https://github.com/navalmishra/Agentic-AI-Assistant.git
+git clone https://github.com/mundele2004/Agentic-AI-Assistant.git
 cd Agentic-AI-Assistant
 ```
 
